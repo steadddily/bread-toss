@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parking Lot Bread Toss</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one column. Poll recap, then the lot (canvas) with controls and physics notes under it. */
+:root{
+  --bg:#eef0ee; --panel:#ffffff; --fg:#22262a; --muted:#646b70; --line:#d5d9d6;
+  --sky-top:#b9d3e3; --sky-bot:#e9eef0; --asphalt:#3b3f43; --paint:#f4f2ea; --curb:#e9b521;
+  --crust:#b8732e; --naan:#e3bf7c; --char:#6a4526; --ball:#cf9f55; --tortilla:#d9c79a; --croissant:#d9932f; --flake:#f3dca4; --accent:#c99300; --accent-ink:#22262a;
+  --win:#2f7d4a;
+  --f-display:"Bungee", "Arial Black", Impact, sans-serif;
+  --f-body:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#15171a; --panel:#1e2125; --fg:#e8e6e1; --muted:#9aa0a5; --line:#33373c;
+  --sky-top:#0b1220; --sky-bot:#2a2a33; --asphalt:#26292c; --paint:#cfcab8; --curb:#e0aa1a;
+  --crust:#c98a3d; --naan:#e8c98a; --char:#6b4a2b; --ball:#d8b26e; --tortilla:#ece0bf; --croissant:#e3a043; --flake:#f6e2b2; --accent:#f0bf2e; --accent-ink:#15171a;
+  --win:#5cc27e; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#15171a; --panel:#1e2125; --fg:#e8e6e1; --muted:#9aa0a5; --line:#33373c;
+  --sky-top:#0b1220; --sky-bot:#2a2a33; --asphalt:#26292c; --paint:#cfcab8; --curb:#e0aa1a;
+  --crust:#c98a3d; --naan:#e8c98a; --char:#6b4a2b; --ball:#d8b26e; --tortilla:#ece0bf; --croissant:#e3a043; --flake:#f6e2b2; --accent:#f0bf2e; --accent-ink:#15171a;
+  --win:#5cc27e; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:980px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:grid;gap:20px}
+h1{font-family:var(--f-display);font-weight:400;font-size:clamp(28px,5vw,44px);line-height:1.05;margin:0;text-wrap:balance;letter-spacing:.01em}
+h2{font-family:var(--f-display);font-weight:400;font-size:20px;margin:0;letter-spacing:.02em}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:10px}
+.poll{display:grid;gap:6px;max-width:560px}
+.rounds{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px 32px}
+.bar{display:grid;grid-template-columns:96px 1fr 72px;align-items:center;gap:10px;font-family:var(--f-mono);font-size:13px}
+.bar .track{height:14px;background:var(--line);border-radius:2px;overflow:hidden}
+.bar .fill{height:100%}
+.verdict{font-size:17px;max-width:65ch;margin:0}
+.verdict b{color:var(--accent)}
+.lot{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+canvas{display:block;width:100%;height:340px}
+.readout{display:flex;flex-wrap:wrap;gap:8px 24px;padding:12px 16px;border-top:1px solid var(--line);font-family:var(--f-mono);font-size:13px;font-variant-numeric:tabular-nums}
+.readout .big{font-size:22px;font-weight:600}
+.readout .what{flex-basis:100%;font-family:var(--f-body);font-size:14px;color:var(--muted)}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;padding:16px;border-top:1px solid var(--line)}
+.ctl{display:grid;gap:6px;min-width:0}
+.ctl label,.ctl .lbl{font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ctl .quote{font-size:13px;color:var(--muted);font-style:normal;min-height:2.6em}
+select,input[type=range]{width:100%;accent-color:var(--accent)}
+select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{flex:1 1 auto;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:4px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:0 16px 16px}
+.btn{font-family:var(--f-display);font-size:16px;padding:10px 20px;border:0;border-radius:4px;background:var(--accent);color:var(--accent-ink);cursor:pointer;letter-spacing:.03em}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-family:var(--f-body);font-size:14px;letter-spacing:0}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.physics{padding:0 16px 16px}
+details{font-size:14px;color:var(--muted)}
+details summary{cursor:pointer;font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+details ul{padding-left:18px;max-width:70ch}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">#cx-team-random · Bread QOTD</div>
+    <h1>Which bread could you throw further?</h1>
+    <div class="rounds">
+      <div class="poll" aria-label="Round 1 results">
+        <div class="eyebrow">Round 1 · Fri Oct 2</div>
+        <div class="bar"><span>baguette</span><span class="track"><span class="fill" style="width:55%;background:var(--crust);display:block"></span></span><span>55% (6)</span></div>
+        <div class="bar"><span>naan</span><span class="track"><span class="fill" style="width:45%;background:var(--naan);display:block"></span></span><span>45% (5)</span></div>
+      </div>
+      <div class="poll" aria-label="Round 2 results">
+        <div class="eyebrow">Round 2 · Mon Oct 5</div>
+        <div class="bar"><span>croissant</span><span class="track"><span class="fill" style="width:14%;background:var(--croissant);display:block"></span></span><span>14% (1)</span></div>
+        <div class="bar"><span>tortilla</span><span class="track"><span class="fill" style="width:86%;background:var(--tortilla);display:block"></span></span><span>86% (6)</span></div>
+      </div>
+    </div>
+    <p class="verdict">Pick a thrower, pick a bread, and find out.</p>
+  </header>
+
+  <section class="lot" aria-label="Throw simulator">
+    <canvas id="cv" aria-label="Side view of the parking lot showing the bread's flight path"></canvas>
+    <div class="readout" aria-live="polite">
+      <div><div class="eyebrow">Distance</div><span class="big" id="rDist">–</span></div>
+      <div><div class="eyebrow">Parking stalls</div><span class="big" id="rStalls">–</span></div>
+      <div><div class="eyebrow">Airtime</div><span class="big" id="rTime">–</span></div>
+      <div><div class="eyebrow">Peak</div><span class="big" id="rPeak">–</span></div>
+      <div class="what" id="rWhat"></div>
+    </div>
+    <div class="controls">
+      <div class="ctl">
+        <label for="thrower">Thrower</label>
+        <select id="thrower"></select>
+        <p class="quote" id="quote"></p>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Bread</span>
+        <div class="seg" id="bread" role="group" aria-label="Bread">
+          <button type="button" data-k="baguette" aria-pressed="true">Baguette</button>
+          <button type="button" data-k="naan" aria-pressed="false">Naan</button>
+          <button type="button" data-k="tortilla" aria-pressed="false">Flour tortilla</button>
+          <button type="button" data-k="croissant" aria-pressed="false">Croissant</button>
+          <button type="button" data-k="ball" aria-pressed="false">Smoosh ball</button>
+        </div>
+        <span class="lbl" style="margin-top:6px">Flatbread condition</span>
+        <div class="seg" id="fresh" role="group" aria-label="Flatbread condition">
+          <button type="button" data-v="0.3" aria-pressed="false">Fresh, floppy</button>
+          <button type="button" data-v="0.6" aria-pressed="true">Day-old</button>
+          <button type="button" data-v="0.9" aria-pressed="false">Stale disc</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <label for="angle">Launch angle <span id="angleV">35°</span></label>
+        <input type="range" id="angle" min="10" max="60" value="35">
+        <label for="wind">Wind <span id="windV">calm</span></label>
+        <input type="range" id="wind" min="-6" max="6" step="0.5" value="0">
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="throw" type="button">Throw</button>
+      <button class="btn ghost" id="clear" type="button">Sweep the lot</button>
+      <span class="note">Flags mark every landing. Bread is drawn 3× size so you can see it.</span>
+    </div>
+    <div class="physics">
+    <details>
+      <summary>How the physics works</summary>
+      <ul>
+        <li><b>Baguette</b>: 250 g, 65 cm long, 6 cm across. A cylinder in a crossflow. Drag along the loaf uses the 28 cm² end (Cd 0.85); drag across it uses the 390 cm² side (Cd 1.2). A uniform loaf has no tail fins, so it keeps whatever attitude you release it at. As the path curves down, it goes broadside and slows hard. Sloppy releases add tumble.</li>
+        <li><b>Naan</b>: 90 g, about 450 cm². A flying disc with frisbee lift and drag coefficients (lift 0.15 + 1.4α, drag 0.08 + 2.72(α+0.07)²), scaled down by how stiff the naan is. Without spin, the disc pitches nose-up, stalls and flutters. Floppy naan holds less spin. Naan does best thrown flat, around 15°.</li>
+        <li><b>Flour tortilla</b>: 45 g, 25 cm round, 2 mm thick. The same disc model as naan, with half the weight on slightly more area, so it glides on less push but bleeds speed faster. Round holds spin a little better than a teardrop. Uses the flatbread condition.</li>
+        <li><b>Croissant</b>: 60 g of lumpy crescent, about 65 cm² of average frontal area, drag coefficient 0.9 to 1.2 depending on how it tumbles. Thrown overhand. A spinny release has a small chance of a boomerang hook. Distance is the furthest point reached (Rose's ruling), and the readout also shows where it came back down (Wolfgang's net).</li>
+        <li><b>Smoosh ball</b>: the same 90 g of naan packed into a 7 cm sphere (Cd 0.5). Thrown overhand about 12% faster than the heavier baguette.</li>
+        <li>Air 1.2 kg/m³, release height 1.8 m, distance measured at first contact with asphalt. A parking stall is 9 ft (2.74 m) wide.</li>
+        <li>Arm speeds and technique ratings are made-up guesses based on what people said in the thread. Nobody has actually thrown bread in the lot yet.</li>
+      </ul>
+    </details>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(() => {
+const RHO = 1.2, G = 9.81, DT = 0.003, H0 = 1.8, STALL = 2.74;
+
+const THROWERS = [
+  {id:'avg', name:'Average CX specialist', over:16, disc:13, spin:.5, cons:.5, vote:'—', quote:'Baseline arm. No notable field-day history.'},
+  {id:'kalani', name:'Kalani (ex shot put and discus)', over:18, disc:21, spin:.9, cons:.8, vote:'naan', quote:'"I did shot put and discus in high school. I can slang that naan."'},
+  {id:'rose', name:'Rose (more of a kicker)', over:14, disc:15, spin:.6, cons:.5, vote:'naan', quote:'"I\'d wager I could frisbee a naan a little further than I could rocket a baguette."'},
+  {id:'myriah', name:'Myriah (can\'t throw a football)', over:11, disc:14, spin:.6, cons:.3, vote:'naan', quote:'"I do think I could frisbee a naan."'},
+  {id:'megan', name:'Megan (tortilla frisbee)', over:14, disc:17, spin:.75, cons:.6, vote:'tortilla', quote:'"i think i could frisbee toss a tortilla pretty far"'},
+  {id:'wolfgang', name:'Wolfgang (far end of the field)', over:17, disc:14, spin:.5, cons:.6, vote:'—', quote:'"Yeah but it would come right back. net 0"'},
+  {id:'natalie', name:'Natalie (did the calculation)', over:17, disc:13, spin:.4, cons:.7, vote:'baguette', quote:'"i did some calculation and i was right"'},
+];
+
+const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); };
+const DISC = {naan:{m:.09, A:.045, rb:0, spd:1}, tortilla:{m:.045, A:.049, rb:.05, spd:1.05}};
+const wrapHalf = a => { while (a > Math.PI/2) a -= Math.PI; while (a <= -Math.PI/2) a += Math.PI; return a; };
+
+function simulate(kind, t, o, record){
+  const c = t.cons, n = o.noise ? 1 : 0;
+  const ang = (o.angle + n*gauss()*(1-c)*6) * Math.PI/180;
+  let x = 0, y = H0, vx, vy, th = 0, om = 0, att = 0, time = 0, peak = H0;
+  const w = o.wind, path = record ? [] : null;
+  let event = '', maxAoA = 0, broadsideAt = null, stallAt = null, maxX = 0;
+  const disc = DISC[kind], boomer = kind === 'croissant' && n && Math.random() < 0.15*t.spin, cdC = 0.9 + Math.random()*0.3;
+  const speedNoise = 1 + n*gauss()*0.05*(1.5-c);
+  let v0;
+  if (kind === 'baguette'){
+    v0 = t.over*speedNoise;
+    th = ang + n*gauss()*(1-c)*0.25;
+    om = n*gauss()*(1-c)*7;
+  } else if (disc){
+    v0 = t.disc*disc.spd*speedNoise;
+    att = ang - 0.05 + n*gauss()*(1-c)*0.15;
+  } else if (kind === 'croissant'){
+    v0 = Math.min(t.over*1.05, 26)*speedNoise;
+    om = 4 + t.spin*8;
+  } else {
+    v0 = Math.min(t.over*1.12, 27)*speedNoise;
+  }
+  vx = v0*Math.cos(ang); vy = v0*Math.sin(ang);
+  const r = disc ? Math.min(0.95, o.fresh + disc.rb) : o.fresh, s = t.spin*r;
+  let step = 0;
+  while (y > 0 && time < 12){
+    const ax0 = vx - w, ay0 = vy, sp = Math.hypot(ax0, ay0) || 1e-6;
+    let fx = 0, fy = 0;
+    if (kind === 'baguette'){
+      const m = .25, Af = .00283, As = .039;
+      const ec = Math.cos(th), es = Math.sin(th), nx = -es, ny = ec;
+      const ua = ax0*ec + ay0*es, un = ax0*nx + ay0*ny;
+      const Fa = -0.5*RHO*0.85*Af*Math.abs(ua)*ua, Fn = -0.5*RHO*1.2*As*Math.abs(un)*un;
+      fx = (Fa*ec + Fn*nx)/m; fy = (Fa*es + Fn*ny)/m;
+      const aoa = Math.abs(wrapHalf(th - Math.atan2(ay0, ax0)));
+      if (aoa > Math.PI/4 && broadsideAt === null) broadsideAt = time;
+      th += om*DT; om *= (1 - 0.4*DT);
+    } else if (disc){
+      const m = disc.m, A = disc.A;
+      const a = wrapHalf(att - Math.atan2(ay0, ax0));
+      maxAoA = Math.max(maxAoA, Math.abs(a));
+      const ac = Math.max(-0.4, Math.min(0.4, a));
+      const stallF = Math.abs(a) > 0.4 ? Math.max(0, 1 - (Math.abs(a)-0.4)/0.8) : 1;
+      if (Math.abs(a) > 0.5 && stallAt === null) stallAt = time;
+      const CL = r*(0.15 + 1.4*ac)*stallF;
+      const CD = Math.min(1.25, 0.08 + 2.72*(a+0.07)**2 + (1-r)*0.25);
+      const q = 0.5*RHO*A*sp*sp;
+      fx = (-q*CD*ax0/sp + q*CL*(-ay0)/sp)/m;
+      fy = (-q*CD*ay0/sp + q*CL*(ax0)/sp)/m;
+      att += (1-s)**2*2.0*(sp/12)**2*DT;
+    } else if (kind === 'croissant'){
+      const m = .06, A = .0065, k = 0.5*RHO*cdC*A/m;
+      fx = -k*sp*ax0; fy = -k*sp*ay0;
+      if (boomer && time > 0.25) fx -= 9;
+      th += om*DT;
+    } else {
+      const m = .09, A = .00385, k = 0.5*RHO*0.5*A/m;
+      fx = -k*sp*ax0; fy = -k*sp*ay0;
+      th -= (vx/0.035)*DT*0.05;
+    }
+    vx += fx*DT; vy += (fy - G)*DT;
+    x += vx*DT; y += vy*DT; time += DT;
+    if (y > peak) peak = y;
+    if (x > maxX) maxX = x;
+    if (record && step % 5 === 0) path.push([x, Math.max(y,0), disc ? att : th, time]);
+    step++;
+  }
+  if (record) path.push([x, 0, disc ? att : th, time]);
+  if (kind === 'baguette'){
+    if (Math.abs(om) > 3) event = `Tumbled end over end at ${(Math.abs(om)/(2*Math.PI)).toFixed(1)} rev/s and caught air broadside the whole way.`;
+    else if (broadsideAt !== null && broadsideAt < time*0.6) event = `Left the hand like a rocket, then went broadside at ${broadsideAt.toFixed(1)} s and slowed hard.`;
+    else event = 'Flew nose-first like a javelin. Rose was right about the rocket.';
+  } else if (disc){
+    if (stallAt === null) event = kind === 'tortilla' ? 'Spun flat and sailed. Megan called it.' : 'Held its shape and glided like a frisbee.';
+    else if (stallAt < 0.5) event = `Too floppy to hold spin. Stalled at ${stallAt.toFixed(1)} s and fluttered down like a leaf.`;
+    else event = `Glided for ${stallAt.toFixed(1)} s, then pitched up, stalled and fluttered.`;
+  } else if (kind === 'croissant'){
+    event = boomer
+      ? `Boomeranged. Reached ${maxX.toFixed(1)} m, then hooked back and landed at ${x.toFixed(1)} m. Rose's rule counts the ${maxX.toFixed(1)}.`
+      : `Tumbled flakily and didn't come back, so Wolfgang's net-zero theory fails. Drag coefficient ${cdC.toFixed(2)} this throw.`;
+  } else event = 'Dense, round and unbothered by aerodynamics. #kategoodatscience';
+  return {dist: kind === 'croissant' ? maxX : x, landed: x, time, peak, event, path};
+}
+
+// ---------- UI state ----------
+const $ = id => document.getElementById(id);
+const sel = $('thrower');
+THROWERS.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; sel.appendChild(o); });
+const state = {bread:'baguette', fresh:0.6, pins:[], anim:null, shown:null};
+const thrower = () => THROWERS.find(t => t.id === sel.value);
+const opts = noise => ({angle:+$('angle').value, wind:+$('wind').value, fresh:state.fresh, noise});
+
+function segInit(id, attr, cb){
+  $(id).querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    $(id).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+    cb(b.dataset[attr]);
+  }));
+}
+segInit('bread', 'k', v => { state.bread = v; });
+segInit('fresh', 'v', v => { state.fresh = +v; });
+const updLabels = () => {
+  $('angleV').textContent = $('angle').value + '°';
+  const w = +$('wind').value;
+  $('windV').textContent = w === 0 ? 'calm' : `${Math.abs(w)} m/s ${w > 0 ? 'tailwind' : 'headwind'}`;
+  $('quote').textContent = thrower().quote;
+};
+$('angle').addEventListener('input', updLabels);
+$('wind').addEventListener('input', updLabels);
+sel.addEventListener('change', updLabels);
+
+// ---------- drawing ----------
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0;
+function resize(){
+  const dpr = window.devicePixelRatio || 1, r = cv.getBoundingClientRect();
+  W = r.width; H = r.height; cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  draw(state.shown, state.shown ? state.shown.path.length - 1 : 0);
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const COL = {baguette:'--crust', naan:'--naan', tortilla:'--tortilla', croissant:'--croissant', ball:'--ball'};
+const NAME = {baguette:'Baguette', naan:'Naan', tortilla:'Flour tortilla', croissant:'Croissant', ball:'Smoosh ball'};
+
+function view(){
+  const far = Math.max(40, ...state.pins.map(p => p.x + 4), state.shown ? Math.max(state.shown.dist, state.shown.landed) + 4 : 0);
+  const groundH = 54, left = 34;
+  const scale = Math.min((W - left - 12)/(far + 2), (H - groundH - 16)/14);
+  return {scale, ox: left + 2*scale, gy: H - groundH, far};
+}
+function draw(sim, idx){
+  if (!W) return;
+  const v = view(), X = x => v.ox + x*v.scale, Y = y => v.gy - y*v.scale;
+  const sky = ctx.createLinearGradient(0,0,0,v.gy); sky.addColorStop(0, css('--sky-top')); sky.addColorStop(1, css('--sky-bot'));
+  ctx.fillStyle = sky; ctx.fillRect(0,0,W,v.gy);
+  ctx.fillStyle = css('--asphalt'); ctx.fillRect(0, v.gy, W, H - v.gy);
+  ctx.fillStyle = css('--curb'); ctx.fillRect(0, v.gy, W, 4);
+  // stall lines
+  ctx.strokeStyle = css('--paint'); ctx.lineWidth = 2;
+  for (let s = 0; X(s*STALL) < W; s++){ const sx = X(s*STALL); ctx.beginPath(); ctx.moveTo(sx, v.gy+8); ctx.lineTo(sx - 6, v.gy+30); ctx.stroke(); }
+  // meter ticks
+  ctx.fillStyle = css('--paint'); ctx.font = '11px ' + css('--f-mono'); ctx.textAlign = 'center';
+  const tick = v.far > 70 ? 10 : 5;
+  for (let m = 0; X(m) < W - 10; m += tick){ ctx.fillText(m + ' m', X(m), H - 8); }
+  // thrower
+  ctx.strokeStyle = css('--fg'); ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  const tx = X(0) - 4, s = v.scale;
+  ctx.beginPath(); ctx.arc(tx, Y(1.65), Math.max(4, .13*s), 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tx, Y(1.5)); ctx.lineTo(tx, Y(0.9)); ctx.lineTo(tx - .25*s, Y(0)); ctx.moveTo(tx, Y(0.9)); ctx.lineTo(tx + .25*s, Y(0));
+  ctx.moveTo(tx, Y(1.35)); ctx.lineTo(tx + .35*s, Y(1.75)); ctx.moveTo(tx, Y(1.35)); ctx.lineTo(tx - .3*s, Y(1.1)); ctx.stroke();
+  // pins
+  state.pins.forEach(p => {
+    const px = X(p.x);
+    ctx.strokeStyle = css('--paint'); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(px, v.gy); ctx.lineTo(px, v.gy - 18); ctx.stroke();
+    ctx.fillStyle = css(COL[p.kind]); ctx.beginPath(); ctx.moveTo(px, v.gy-18); ctx.lineTo(px+10, v.gy-14); ctx.lineTo(px, v.gy-10); ctx.fill();
+  });
+  if (!sim) return;
+  const pts = sim.path;
+  ctx.strokeStyle = css(COL[sim.kind]); ctx.lineWidth = 2; ctx.setLineDash([4,5]);
+  ctx.beginPath(); for (let i = 0; i <= idx; i++){ const [x,y] = pts[i]; i ? ctx.lineTo(X(x),Y(y)) : ctx.moveTo(X(x),Y(y)); } ctx.stroke(); ctx.setLineDash([]);
+  const [bx, by, ba] = pts[idx];
+  drawBread(sim.kind, X(bx), Y(by), ba, s*3);
+}
+function drawBread(kind, x, y, a, s){
+  ctx.save(); ctx.translate(x, y); ctx.rotate(-a);
+  if (kind === 'baguette'){
+    const L = .65*s, D = Math.max(5, .06*s);
+    ctx.fillStyle = css('--crust'); ctx.beginPath(); ctx.ellipse(0,0,L/2,D/2,0,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = css('--naan'); ctx.lineWidth = 1.5;
+    for (let i = -2; i <= 2; i++){ ctx.beginPath(); ctx.moveTo(i*L/6 - D/3, -D/4); ctx.lineTo(i*L/6 + D/3, D/4); ctx.stroke(); }
+  } else if (kind === 'naan'){
+    const R = .14*s, T = Math.max(3, .015*s);
+    ctx.fillStyle = css('--naan'); ctx.beginPath(); ctx.ellipse(0,0,R,T,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = css('--char'); [-.5,.1,.6].forEach(f => { ctx.beginPath(); ctx.arc(f*R, -T*.2, Math.max(1.2,T*.35), 0, Math.PI*2); ctx.fill(); });
+  } else if (kind === 'tortilla'){
+    const R = .125*s, T = Math.max(2, .008*s);
+    ctx.fillStyle = css('--tortilla'); ctx.beginPath(); ctx.ellipse(0,0,R,T,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = css('--char'); [-.6,-.15,.35,.7].forEach(f => { ctx.beginPath(); ctx.arc(f*R, 0, Math.max(1,T*.45), 0, Math.PI*2); ctx.fill(); });
+  } else if (kind === 'croissant'){
+    const L = Math.max(10, .13*s), D = Math.max(5, .05*s);
+    ctx.fillStyle = css('--croissant'); ctx.beginPath();
+    ctx.arc(0, D*1.4, L*.6, Math.PI*1.18, Math.PI*1.82); ctx.arc(0, D*1.4, L*.6 - D, Math.PI*1.82, Math.PI*1.18, true); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = css('--flake'); ctx.lineWidth = 1.2;
+    [-.25, 0, .25].forEach(f => { ctx.beginPath(); ctx.moveTo(f*L*1.4 - 2, -D*.1 + Math.abs(f)*D*.6); ctx.lineTo(f*L*1.4 + 2, D*.5 + Math.abs(f)*D*.6); ctx.stroke(); });
+  } else {
+    const R = Math.max(4, .035*s);
+    ctx.fillStyle = css('--ball'); ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = css('--char'); ctx.beginPath(); ctx.arc(R*.35, -R*.2, R*.22, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function showResult(sim){
+  $('rDist').textContent = sim.dist.toFixed(1) + ' m';
+  $('rStalls').textContent = (sim.dist/STALL).toFixed(1);
+  $('rTime').textContent = sim.time.toFixed(2) + ' s';
+  $('rPeak').textContent = sim.peak.toFixed(1) + ' m';
+  $('rWhat').textContent = `${thrower().name.split(' (')[0]} · ${NAME[sim.kind]}. ${sim.event}`;
+}
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function throwNow(animate){
+  const sim = simulate(state.bread, thrower(), opts(true), true); sim.kind = state.bread;
+  if (state.anim) cancelAnimationFrame(state.anim);
+  state.shown = sim;
+  const finish = () => { state.pins.push({x: sim.landed, kind: sim.kind}); if (state.pins.length > 20) state.pins.shift(); draw(sim, sim.path.length-1); showResult(sim); };
+  if (!animate || reduce){ finish(); return; }
+  const t0 = performance.now(), pts = sim.path;
+  ['rDist','rStalls','rTime','rPeak'].forEach(i => $(i).textContent = '…'); $('rWhat').textContent = '';
+  const tick = now => {
+    const t = (now - t0)/1000; let i = 0;
+    while (i < pts.length-1 && pts[i][3] < t) i++;
+    draw(sim, i);
+    if (i < pts.length-1) state.anim = requestAnimationFrame(tick); else finish();
+  };
+  state.anim = requestAnimationFrame(tick);
+}
+$('throw').addEventListener('click', () => throwNow(true));
+$('clear').addEventListener('click', () => { state.pins = []; state.shown = null; draw(null,0); ['rDist','rStalls','rTime','rPeak'].forEach(i => $(i).textContent = '–'); $('rWhat').textContent = ''; });
+
+// ---------- boot ----------
+updLabels();
+new ResizeObserver(resize).observe(cv);
+throwNow(false);
+})();
+</script>
+
+</html>
